@@ -83,6 +83,7 @@ MotorDir  lastDir     = STOP;
 float     vLeft       = 0;
 float     vRight      = 0;
 unsigned long lastMeasure = 0;
+unsigned long motorStopTime = 0;
 
 // ─── Прототипы ─────────────────────────────────────────────
 void motorStop();
@@ -90,8 +91,9 @@ void motorLeft();
 void motorRight();
 void updateOLED(MotorDir dir);
 void readVoltages();
-void autoTrack();
+void autoTrack(unsigned long now);
 void handleManual();
+void updateMotor(unsigned long now);
 
 // ══════════════════════════════════════════════════════════
 void setup() {
@@ -160,7 +162,7 @@ void loop() {
     readVoltages();
 
     if (currentMode == AUTO) {
-      autoTrack();
+      autoTrack(now);
     }
     updateOLED(lastDir);
   }
@@ -169,6 +171,8 @@ void loop() {
   if (currentMode == MANUAL) {
     handleManual();
   }
+
+  updateMotor(now);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -186,22 +190,27 @@ void readVoltages() {
 
 // ══════════════════════════════════════════════════════════
 // Автоматический дифференциальный трекинг
-void autoTrack() {
+void autoTrack(unsigned long now) {
   float diff = vLeft - vRight;
 
   if (diff > VOLTAGE_THRESHOLD_MV) {
     // Левая панель освещена сильнее → трекер поворачивает влево
     motorLeft();
     lastDir = LEFT;
-    delay(MOTOR_RUN_MS);
-    motorStop();
+    motorStopTime = now + MOTOR_RUN_MS;
   } else if (-diff > VOLTAGE_THRESHOLD_MV) {
     // Правая панель освещена сильнее → поворот вправо
     motorRight();
     lastDir = RIGHT;
-    delay(MOTOR_RUN_MS);
-    motorStop();
+    motorStopTime = now + MOTOR_RUN_MS;
   } else {
+    motorStop();
+    lastDir = STOP;
+  }
+}
+
+void updateMotor(unsigned long now) {
+  if (motorStopTime != 0 && now >= motorStopTime) {
     motorStop();
     lastDir = STOP;
   }
@@ -216,9 +225,11 @@ void handleManual() {
   if (btnL && !btnR) {
     motorLeft();
     lastDir = LEFT;
+    motorStopTime = 0;
   } else if (btnR && !btnL) {
     motorRight();
     lastDir = RIGHT;
+    motorStopTime = 0;
   } else {
     motorStop();
     lastDir = STOP;
@@ -231,6 +242,7 @@ void motorStop() {
   ledcWrite(PWM_CHANNEL, 0);
   digitalWrite(MOTOR_IN1, LOW);
   digitalWrite(MOTOR_IN2, LOW);
+  motorStopTime = 0;
 }
 
 void motorLeft() {
