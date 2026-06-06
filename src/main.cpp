@@ -39,6 +39,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <INA226_WE.h>
+#include <EEPROM.h>
 
 // ─── OLED ──────────────────────────────────────────────────
 #define SCREEN_W   128
@@ -63,10 +64,11 @@ INA226_WE inaRight(INA_RIGHT_ADDR);
 #define BTN_RIGHT  3
 
 // ─── Настройки трекера ─────────────────────────────────────
-#define VOLTAGE_THRESHOLD_MV  50.0f  // мВ — мёртвая зона
+#define VOLTAGE_THRESHOLD_MV  150.0f  // мВ — мёртвая зона
 #define MOTOR_SPEED           180    // PWM 0-255
-#define MOTOR_RUN_MS          300    // мс импульс поворота
+#define MOTOR_RUN_MS          600    // мс импульс поворота
 #define MEASURE_INTERVAL_MS   500    // интервал замеров
+#define CALIBRATION_HOLD_MS   1000   // удержание LEFT+RIGHT в MANUAL для калибровки
 
 // ─── PWM (ESP32 Arduino Core v3.x) ────────────────────────
 #define PWM_FREQ      5000
@@ -76,14 +78,33 @@ INA226_WE inaRight(INA_RIGHT_ADDR);
 
 // ─── Состояние ─────────────────────────────────────────────
 enum MotorDir { STOP, LEFT, RIGHT };
-enum Mode     { AUTO, MANUAL };
+enum Mode     { AUTO, MANUAL, CALIBRATION };
+
+// ─── Структура калибровки ──────────────────────────────────
+struct CalibrationData {
+  float coeff_left;   // коэффициент коррекции левой панели
+  float coeff_right;  // коэффициент коррекции правой панели
+  uint32_t magic;     // магическое число для проверки валидности (0xCAL1B0A)
+};
+
+// EEPROM адреса
+#define EEPROM_CALIB_ADDR 0
+#define EEPROM_SIZE       512
+#define CALIB_MAGIC       0xCA11B0A
+
+CalibrationData calibration = { 1.0f, 1.0f, CALIB_MAGIC };
 
 Mode      currentMode = AUTO;
+Mode      modeAfterCalibration = MANUAL;
 MotorDir  lastDir     = STOP;
 float     vLeft       = 0;
 float     vRight      = 0;
+float     vLeftRaw    = 0;
+float     vRightRaw   = 0;
 unsigned long lastMeasure = 0;
 unsigned long motorStopTime = 0;
+unsigned long calibrationStartTime = 0;
+bool calibrationComboLockout = false;
 
 // ─── Прототипы ─────────────────────────────────────────────
 void motorStop();
@@ -94,6 +115,51 @@ void readVoltages();
 void autoTrack(unsigned long now);
 void handleManual();
 void updateMotor(unsigned long now);
+void loadCalibration();
+void saveCalibration();
+void applyCalibration();
+void resetCalibration();
+void handleCalibration();
+
+// ══════════════════════════════════════════════════════════
+// Работа с EEPROM (калибровка)
+void loadCalibration() {
+  EEPROM.begin(EEPROM_SIZE);
+  EEPROM.get(EEPROM_CALIB_ADDR, calibration);
+  EEPROM.end();
+  
+  // Проверка валидности
+  if (calibration.magic != CALIB_MAGIC) {
+    resetCalibration();
+    Serial.println("⚠ Калибровка не найдена, используются коэффициенты по умолчанию");
+  } else {
+    Serial.printf("✓ Калибровка загружена: L=%.4f, R=%.4f\n", 
+                  calibration.coeff_left, calibration.coeff_right);
+  }
+}
+
+void saveCalibration() {
+  calibration.magic = CALIB_MAGIC;
+  EEPROM.begin(EEPROM_SIZE);
+  EEPROM.put(EEPROM_CALIB_ADDR, calibration);
+  EEPROM.commit();
+  EEPROM.end();
+  Serial.printf("✓ Калибровка сохранена: L=%.4f, R=%.4f\n", 
+                calibration.coeff_left, calibration.coeff_right);
+}
+
+void resetCalibration() {
+  calibration.coeff_left = 1.0f;
+  calibration.coeff_right = 1.0f;
+  calibration.magic = CALIB_MAGIC;
+  saveCalibration();
+  Serial.println("✓ Калибровка сброшена на значения по умолчанию");
+}
+
+void applyCalibration() {
+  vLeft  *= calibration.coeff_left;
+  vRight *= calibration.coeff_right;
+}
 
 // ══════════════════════════════════════════════════════════
 void setup() {
@@ -140,6 +206,9 @@ void setup() {
   pinMode(BTN_LEFT,  INPUT_PULLUP);
   pinMode(BTN_RIGHT, INPUT_PULLUP);
 
+  // Загрузка калибровки из EEPROM
+  loadCalibration();
+
   Serial.println("Инициализация завершена");
 }
 
@@ -163,6 +232,8 @@ void loop() {
 
     if (currentMode == AUTO) {
       autoTrack(now);
+    } else if (currentMode == CALIBRATION) {
+      handleCalibration();
     }
     updateOLED(lastDir);
   }
@@ -178,14 +249,51 @@ void loop() {
 // ══════════════════════════════════════════════════════════
 // Чтение напряжений с обеих панелей (мВ)
 void readVoltages() {
-  vLeft  = inaLeft.getBusVoltage_V()  * 1000.0f;
-  vRight = inaRight.getBusVoltage_V() * 1000.0f;
+  vLeftRaw  = inaLeft.getBusVoltage_V()  * 1000.0f;
+  vRightRaw = inaRight.getBusVoltage_V() * 1000.0f;
+  vLeft     = vLeftRaw;
+  vRight    = vRightRaw;
 
-   // Добавь:
-  Serial.printf("INA_L raw bus: %.4f V\n", inaLeft.getBusVoltage_V());
-  Serial.printf("INA_R raw bus: %.4f V\n", inaRight.getBusVoltage_V());
-  Serial.printf("V_left=%.1f mV  V_right=%.1f mV  diff=%.1f mV\n",
-                vLeft, vRight, vLeft - vRight);          
+  // Применение калибровки
+  applyCalibration();
+
+  Serial.printf("RAW: L=%.1f mV  R=%.1f mV  diff=%.1f mV\n",
+                vLeftRaw, vRightRaw, vLeftRaw - vRightRaw);
+  Serial.printf("CAL: L=%.1f mV  R=%.1f mV  diff=%.1f mV  coeff L=%.4f R=%.4f\n",
+                vLeft, vRight, vLeft - vRight,
+                calibration.coeff_left, calibration.coeff_right);
+}
+
+// ══════════════════════════════════════════════════════════
+// Режим калибровки
+void handleCalibration() {
+  if (vLeftRaw <= 1.0f || vRightRaw <= 1.0f) {
+    Serial.println("Калибровка отменена: слишком малое напряжение на одном из каналов.");
+    currentMode = modeAfterCalibration;
+    return;
+  }
+
+  float target = (vLeftRaw > vRightRaw) ? vLeftRaw : vRightRaw;
+
+  calibration.coeff_left = target / vLeftRaw;
+  calibration.coeff_right = target / vRightRaw;
+
+  vLeft = vLeftRaw;
+  vRight = vRightRaw;
+  applyCalibration();
+
+  Serial.printf("\n=== КАЛИБРОВКА ЗАВЕРШЕНА ===\n");
+  Serial.printf("RAW: L=%.1f mV  R=%.1f mV  diff=%.1f mV\n",
+                vLeftRaw, vRightRaw, vLeftRaw - vRightRaw);
+  Serial.printf("CAL: L=%.1f mV  R=%.1f mV  diff=%.1f mV\n",
+                vLeft, vRight, vLeft - vRight);
+  Serial.printf("Коэффициенты: L=%.4f  R=%.4f\n",
+                calibration.coeff_left, calibration.coeff_right);
+
+  saveCalibration();
+
+  currentMode = modeAfterCalibration;
+  Serial.println(currentMode == MANUAL ? "Переход в режим MANUAL" : "Переход в режим AUTO");
 }
 
 // ══════════════════════════════════════════════════════════
@@ -219,18 +327,51 @@ void updateMotor(unsigned long now) {
 // ══════════════════════════════════════════════════════════
 // Ручное управление кнопками
 void handleManual() {
+  static unsigned long bothPressStart = 0;
   bool btnL = (digitalRead(BTN_LEFT)  == LOW);
   bool btnR = (digitalRead(BTN_RIGHT) == LOW);
 
-  if (btnL && !btnR) {
+  if (calibrationComboLockout) {
+    if (!btnL && !btnR) {
+      calibrationComboLockout = false;
+    } else {
+      motorStop();
+      lastDir = STOP;
+      return;
+    }
+  }
+
+  if (btnL && btnR) {
+    motorStop();
+    lastDir = STOP;
+    motorStopTime = 0;
+
+    if (bothPressStart == 0) {
+      bothPressStart = millis();
+    }
+
+    if (millis() - bothPressStart >= CALIBRATION_HOLD_MS) {
+      modeAfterCalibration = MANUAL;
+      currentMode = CALIBRATION;
+      calibrationStartTime = millis();
+      calibrationComboLockout = true;
+      bothPressStart = 0;
+      Serial.println("\n=== РЕЖИМ КАЛИБРОВКИ ===");
+      Serial.println("Обе панели должны быть под одинаковым освещением.");
+      Serial.println("Снимаю оба канала одновременно и подгоняю CAL L = CAL R.");
+    }
+  } else if (btnL && !btnR) {
+    bothPressStart = 0;
     motorLeft();
     lastDir = LEFT;
     motorStopTime = 0;
   } else if (btnR && !btnL) {
+    bothPressStart = 0;
     motorRight();
     lastDir = RIGHT;
     motorStopTime = 0;
   } else {
+    bothPressStart = 0;
     motorStop();
     lastDir = STOP;
   }
@@ -267,7 +408,13 @@ void updateOLED(MotorDir dir) {
   display.setCursor(0, 0);
   display.print("SOLAR TRACKER");
   display.setCursor(90, 0);
-  display.print(currentMode == AUTO ? "AUTO" : "MAN");
+  if (currentMode == AUTO) {
+    display.print("AUTO");
+  } else if (currentMode == MANUAL) {
+    display.print("MAN");
+  } else {
+    display.print("CAL");
+  }
 
   // ── Разделитель ──
   display.drawLine(0, 9, 127, 9, SSD1306_WHITE);
