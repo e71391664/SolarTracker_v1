@@ -40,6 +40,7 @@
 #include "display.h"
 #include "motor.h"
 #include "ina226.h"
+#include "solar_webserver.h"
 
 // ─── Настройки трекера ─────────────────────────────────────
 #define MEASURE_INTERVAL_MS   500    // интервал замеров
@@ -145,12 +146,28 @@ void setup() {
   // Загрузка калибровки из EEPROM
   loadCalibration();
 
+  // WebServer (WiFi Point Access)
+  initWebServer();
+
   Serial.println("Инициализация завершена");
 }
 
 // ══════════════════════════════════════════════════════════
 void loop() {
-  // Переключение режима AUTO/MANUAL
+  // ─── Мониторинг WiFi AP (периодически) ──────────────────
+  static unsigned long lastAPCheck = 0;
+  unsigned long now = millis();
+  if (now - lastAPCheck >= 10000) {  // Проверка каждые 10 сек
+    lastAPCheck = now;
+    int clients = WiFi.softAPgetStationNum();
+    Serial.printf("[WiFi AP] Подключённых клиентов: %d, MAC: %s\n", 
+                  clients, WiFi.softAPmacAddress().c_str());
+  }
+  
+  // ─── Обработка веб-запросов ──────────────────────────────
+  handleWebServer();
+
+  // ─── Переключение режима AUTO/MANUAL ─────────────────────
   if (digitalRead(BTN_AUTO) == LOW) {
     delay(50);
     if (digitalRead(BTN_AUTO) == LOW) {
@@ -160,8 +177,7 @@ void loop() {
     }
   }
 
-  // Замер раз в MEASURE_INTERVAL_MS
-  unsigned long now = millis();
+  // ─── Замер раз в MEASURE_INTERVAL_MS ─────────────────────
   if (now - lastMeasure >= MEASURE_INTERVAL_MS) {
     lastMeasure = now;
     readVoltages();
@@ -174,7 +190,7 @@ void loop() {
     updateOLED(getMotorDir());
   }
 
-  // Ручное управление (опрашиваем постоянно)
+  // ─── Ручное управление (опрашиваем постоянно) ───────────
   if (currentMode == MANUAL) {
     handleManual();
   }
