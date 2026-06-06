@@ -9,5 +9,6 @@
 void initINA226();
 float getLeftVoltage_mV();
 float getRightVoltage_mV();
+void readVoltages(float &vLeftRaw, float &vRightRaw, float &vLeft, float &vRight);
 
 #endif // INA226_H

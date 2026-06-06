@@ -26,3 +26,10 @@ float getLeftVoltage_mV() {
 float getRightVoltage_mV() {
   return inaRight.getBusVoltage_V() * 1000.0f;
 }
+
+void readVoltages(float &vLeftRaw, float &vRightRaw, float &vLeft, float &vRight) {
+  vLeftRaw  = getLeftVoltage_mV();
+  vRightRaw = getRightVoltage_mV();
+  vLeft     = vLeftRaw;
+  vRight    = vRightRaw;
+}
