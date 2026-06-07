@@ -108,14 +108,21 @@ void loop() {
   // ─── Обработка веб-запросов ──────────────────────────────
   handleWebServer();
 
-  // ─── Переключение режима AUTO/MANUAL ─────────────────────
-  if (digitalRead(BTN_AUTO) == LOW) {
+  // ─── Переключение режима AUTO/MANUAL + защита от BTN_AUTO во время CALIBRATION ─
+  if (currentMode != CALIBRATION && digitalRead(BTN_AUTO) == LOW) {
     delay(50);
-    if (digitalRead(BTN_AUTO) == LOW) {
+    if (currentMode != CALIBRATION && digitalRead(BTN_AUTO) == LOW) {
       currentMode = (currentMode == AUTO) ? MANUAL : AUTO;
       motorStop();
       delay(300);
     }
+  }
+
+  // ─── Таймаут отмены калибровки (если зависнет) ─────────────────
+  if (currentMode == CALIBRATION && (millis() - calibrationStartTime > 5000)) {
+    Serial.println("⚠ Калибровка отменена по таймауту (5с)");
+    currentMode = modeAfterCalibration;
+    calibrationComboLockout = false;
   }
 
   // ─── Замер раз в MEASURE_INTERVAL_MS ─────────────────────
@@ -144,8 +151,3 @@ void loop() {
 
   updateMotor(now);
 }
-
-// ══════════════════════════════════════════════════════════
-// Чтение напряжений с обеих панелей (мВ)
-// Реализация перемещена в модуль ina226.
-

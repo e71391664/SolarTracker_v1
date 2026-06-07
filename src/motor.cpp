@@ -76,6 +76,7 @@ void handleManual() {
   if (calibrationComboLockout) {
     if (!btnL && !btnR) {
       calibrationComboLockout = false;
+      return;
     } else {
       motorStop();
       return;
