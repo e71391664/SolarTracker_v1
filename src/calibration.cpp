@@ -9,10 +9,12 @@ extern bool calibrationComboLockout;
 
 static CalibrationData calibration = { 1.0f, 1.0f, CALIB_MAGIC };
 
+// Инициализация калибровки (загрузка из EEPROM)
 void initCalibration() {
   loadCalibration();
 }
 
+// Получение калиброванных напряжений
 void loadCalibration() {
   EEPROM.begin(EEPROM_SIZE);
   EEPROM.get(EEPROM_CALIB_ADDR, calibration);
@@ -27,6 +29,7 @@ void loadCalibration() {
   }
 }
 
+// Сохранение калибровки в EEPROM
 void saveCalibration() {
   calibration.magic = CALIB_MAGIC;
   EEPROM.begin(EEPROM_SIZE);
@@ -37,6 +40,7 @@ void saveCalibration() {
                 calibration.coeff_left, calibration.coeff_right);
 }
 
+// Сброс калибровки на значения по умолчанию
 void resetCalibration() {
   calibration.coeff_left = 1.0f;
   calibration.coeff_right = 1.0f;
@@ -44,12 +48,13 @@ void resetCalibration() {
   saveCalibration();
   Serial.println("✓ Калибровка сброшена на значения по умолчанию");
 }
-
+// Применение калибровки к сырым напряжениям
 void applyCalibration(float &vLeft, float &vRight) {
   vLeft  *= calibration.coeff_left;
   vRight *= calibration.coeff_right;
 }
 
+// Обработка калибровки (вызывается при удержании обеих кнопок)
 Mode handleCalibration(Mode modeAfterCalibration, float vLeftRaw, float vRightRaw,
                        float &vLeft, float &vRight) {
   if (vLeftRaw <= 1.0f || vRightRaw <= 1.0f) {
@@ -80,10 +85,12 @@ Mode handleCalibration(Mode modeAfterCalibration, float vLeftRaw, float vRightRa
   return modeAfterCalibration;
 }
 
+// Получение текущих коэффициентов калибровки
 float getCalibrationLeftCoeff() {
   return calibration.coeff_left;
 }
 
+//
 float getCalibrationRightCoeff() {
   return calibration.coeff_right;
 }
