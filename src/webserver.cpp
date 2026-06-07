@@ -376,6 +376,12 @@ void handleCmdRight() {
 }
 
 void handleCmdMode() {
+    if (currentMode == CALIBRATION) {
+        Serial.println("CMD_MODE ignored: калибровка в процессе");
+        server.send(200, "text/plain", "OK");
+        return;
+    }
+
     if (currentMode == AUTO) {
         currentMode = MANUAL;
         motorStop();
