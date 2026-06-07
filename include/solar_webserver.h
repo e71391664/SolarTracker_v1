@@ -20,6 +20,8 @@ extern Mode currentMode;
 extern Mode modeAfterCalibration;
 extern float vLeft;
 extern float vRight;
+extern float vLeftRaw;
+extern float vRightRaw;
 extern unsigned long calibrationStartTime;
 extern bool calibrationComboLockout;
 extern String statusMessage;

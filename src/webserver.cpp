@@ -261,13 +261,23 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
         <div class="status-section">
             <div class="panel-readings">
                 <div class="panel-card">
-                    <div class="panel-label">Left Panel</div>
-                    <div class="panel-value" id="left-voltage">0</div>
+                    <div class="panel-label">Left Calibrated</div>
+                    <div class="panel-value" id="left-voltage-cal">0</div>
                     <div class="panel-unit">mV</div>
                 </div>
                 <div class="panel-card">
-                    <div class="panel-label">Right Panel</div>
-                    <div class="panel-value" id="right-voltage">0</div>
+                    <div class="panel-label">Right Calibrated</div>
+                    <div class="panel-value" id="right-voltage-cal">0</div>
+                    <div class="panel-unit">mV</div>
+                </div>
+                <div class="panel-card">
+                    <div class="panel-label">Left Raw</div>
+                    <div class="panel-value" id="left-voltage-raw">0</div>
+                    <div class="panel-unit">mV</div>
+                </div>
+                <div class="panel-card">
+                    <div class="panel-label">Right Raw</div>
+                    <div class="panel-value" id="right-voltage-raw">0</div>
                     <div class="panel-unit">mV</div>
                 </div>
             </div>
@@ -312,10 +322,14 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
                 .then(response => response.json())
                 .then(data => {
                     // Напряжения
-                    const leftV = data.vLeft.toFixed(1);
-                    const rightV = data.vRight.toFixed(1);
-                    document.getElementById('left-voltage').textContent = leftV;
-                    document.getElementById('right-voltage').textContent = rightV;
+                    const leftCal = data.vLeft.toFixed(1);
+                    const rightCal = data.vRight.toFixed(1);
+                    const leftRaw = data.vLeftRaw.toFixed(1);
+                    const rightRaw = data.vRightRaw.toFixed(1);
+                    document.getElementById('left-voltage-cal').textContent = leftCal;
+                    document.getElementById('right-voltage-cal').textContent = rightCal;
+                    document.getElementById('left-voltage-raw').textContent = leftRaw;
+                    document.getElementById('right-voltage-raw').textContent = rightRaw;
                     
                     // Разница
                     const diff = data.vLeft - data.vRight;
@@ -387,6 +401,8 @@ void handleStatusAPI() {
     String json = "{";
     json += "\"vLeft\":" + String(vLeft, 1) + ",";
     json += "\"vRight\":" + String(vRight, 1) + ",";
+    json += "\"vLeftRaw\":" + String(vLeftRaw, 1) + ",";
+    json += "\"vRightRaw\":" + String(vRightRaw, 1) + ",";
     json += "\"mode\":" + String((int)currentMode) + ",";
     json += "\"motorDir\":" + String((int)getMotorDir()) + ",";
     json += "\"statusMessage\":\"" + msg + "\"";
@@ -448,6 +464,7 @@ void handleCmdCalibrate() {
         return;
     }
 
+    motorStop();
     modeAfterCalibration = MANUAL;
     currentMode = CALIBRATION;
     calibrationStartTime = millis();

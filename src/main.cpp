@@ -131,6 +131,7 @@ void loop() {
   if (now - lastMeasure >= MEASURE_INTERVAL_MS) {
     lastMeasure = now;
     readVoltages(vLeftRaw, vRightRaw, vLeft, vRight);
+    applyCalibration(vLeft, vRight);
 
     Serial.printf("RAW: L=%.1f mV  R=%.1f mV  diff=%.1f mV\n",
                   vLeftRaw, vRightRaw, vLeftRaw - vRightRaw);
