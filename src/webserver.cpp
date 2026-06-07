@@ -369,7 +369,7 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
             fetch('/api/cmd/calibrate', {method: 'POST'})
                 .then(() => setTimeout(updateStatus, 100));
         }
-        
+
         // Начальное обновление и периодическое обновление
         updateStatus();
         setInterval(updateStatus, 500);
@@ -398,12 +398,20 @@ void handleStatusAPI() {
 }
 
 void handleCmdLeft() {
+    if (currentMode == CALIBRATION) {
+        server.send(200, "text/plain", "OK");
+        return;
+    }
     motorLeft();
     setMotorStopTime(millis() + MOTOR_RUN_MS);
     server.send(200, "text/plain", "OK");
 }
 
 void handleCmdRight() {
+    if (currentMode == CALIBRATION) {
+        server.send(200, "text/plain", "OK");
+        return;
+    }
     motorRight();
     setMotorStopTime(millis() + MOTOR_RUN_MS);
     server.send(200, "text/plain", "OK");
@@ -428,13 +436,19 @@ void handleCmdMode() {
 }
 
 void handleCmdCalibrate() {
+    if (currentMode != MANUAL) {
+        statusMessage = "Калибровка возможна только из MANUAL";
+        server.send(200, "text/plain", "OK");
+        return;
+    }
+
     if (currentMode == CALIBRATION) {
         statusMessage = "Калибровка уже запущена";
         server.send(200, "text/plain", "OK");
         return;
     }
 
-    modeAfterCalibration = currentMode;
+    modeAfterCalibration = MANUAL;
     currentMode = CALIBRATION;
     calibrationStartTime = millis();
     calibrationComboLockout = true;

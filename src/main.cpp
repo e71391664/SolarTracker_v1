@@ -122,6 +122,7 @@ void loop() {
   // ─── Таймаут отмены калибровки (если зависнет) ─────────────────
   if (currentMode == CALIBRATION && (millis() - calibrationStartTime > 5000)) {
     Serial.println("⚠ Калибровка отменена по таймауту (5с)");
+    statusMessage = "Калибровка отменена по таймауту";
     currentMode = modeAfterCalibration;
     calibrationComboLockout = false;
   }
