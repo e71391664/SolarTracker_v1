@@ -4,6 +4,7 @@ extern Mode currentMode;
 extern Mode modeAfterCalibration;
 extern bool calibrationComboLockout;
 extern unsigned long calibrationStartTime;
+extern String statusMessage;
 
 static MotorDir currentDir = STOP;
 static unsigned long motorStopTime = 0;
@@ -96,6 +97,7 @@ void handleManual() {
       currentMode = CALIBRATION;
       calibrationStartTime = millis();
       calibrationComboLockout = true;
+      statusMessage = "Режим калибровки активирован";
       bothPressStart = 0;
       Serial.println("\n=== РЕЖИМ КАЛИБРОВКИ ===");
       Serial.println("Обе панели должны быть под одинаковым освещением.");

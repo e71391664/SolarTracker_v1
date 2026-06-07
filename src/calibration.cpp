@@ -2,6 +2,7 @@
 #include "calibration.h"
 
 extern bool calibrationComboLockout;
+extern String statusMessage;
 
 #define EEPROM_CALIB_ADDR 0
 #define EEPROM_SIZE       512
@@ -59,6 +60,7 @@ Mode handleCalibration(Mode modeAfterCalibration, float vLeftRaw, float vRightRa
                        float &vLeft, float &vRight) {
   if (vLeftRaw <= 1.0f || vRightRaw <= 1.0f) {
     Serial.println("Калибровка отменена: слишком малое напряжение на одном из каналов.");
+    statusMessage = "Калибровка отменена: недостаточное напряжение";
     calibrationComboLockout = false;
     return modeAfterCalibration;
   }
@@ -81,6 +83,7 @@ Mode handleCalibration(Mode modeAfterCalibration, float vLeftRaw, float vRightRa
                 calibration.coeff_left, calibration.coeff_right);
 
   saveCalibration();
+  statusMessage = "Калибровка завершена успешно";
   calibrationComboLockout = false;
   return modeAfterCalibration;
 }

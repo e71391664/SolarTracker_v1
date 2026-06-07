@@ -17,7 +17,11 @@ void handleWebServer();
 
 // ─── Глобальные переменные из main.cpp ─────────────────────
 extern Mode currentMode;
+extern Mode modeAfterCalibration;
 extern float vLeft;
 extern float vRight;
+extern unsigned long calibrationStartTime;
+extern bool calibrationComboLockout;
+extern String statusMessage;
 
 #endif // SOLARTRACKER_WEBSERVER_H

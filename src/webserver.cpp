@@ -173,6 +173,14 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
         .btn-mode:hover {
             box-shadow: 0 6px 20px rgba(67, 233, 123, 0.4);
         }
+        .btn-calibrate {
+            background: linear-gradient(135deg, #ff9a8b 0%, #ff6a88 100%);
+            color: white;
+            grid-column: 1 / -1;
+        }
+        .btn-calibrate:hover {
+            box-shadow: 0 6px 20px rgba(255, 106, 136, 0.4);
+        }
         .mode-indicator {
             text-align: center;
             padding: 12px;
@@ -190,6 +198,17 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
         }
         .mode-calib {
             background: rgba(255, 87, 108, 0.3);
+        }
+        .status-notice {
+            text-align: center;
+            padding: 12px 16px;
+            margin-top: 14px;
+            background: rgba(255,255,255,0.12);
+            border-radius: 10px;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1);
         }
         .diff-meter {
             background: white;
@@ -276,10 +295,12 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
                 <button class="btn btn-left" onclick="moveLeft()">← LEFT</button>
                 <button class="btn btn-right" onclick="moveRight()">RIGHT →</button>
                 <button class="btn btn-mode" onclick="toggleMode()">AUTO / MANUAL</button>
+                <button class="btn btn-calibrate" onclick="startCalibration()">CALIBRATE</button>
             </div>
             <div class="mode-indicator" id="mode-indicator" class="mode-auto">MODE: AUTO</div>
         </div>
         
+        <div class="status-notice" id="status-notice">Готово</div>
         <div class="update-time">Last update: <span id="last-update">--:--:--</span></div>
     </div>
 
@@ -311,6 +332,10 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
                     document.getElementById('mode-indicator').textContent = 'MODE: ' + modeText;
                     document.getElementById('mode-indicator').className = 'mode-indicator ' + modeClass;
                     
+                    // Уведомления
+                    const notification = data.statusMessage || 'Готово';
+                    document.getElementById('status-notice').textContent = notification;
+                    
                     // Статус мотора
                     const motorText = data.motorDir === 0 ? 'STOP' : (data.motorDir === 1 ? 'LEFT ↙' : 'RIGHT ↗');
                     document.getElementById('motor-status').textContent = motorText;
@@ -339,6 +364,11 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
             fetch('/api/cmd/mode', {method: 'POST'})
                 .then(() => setTimeout(updateStatus, 100));
         }
+
+        function startCalibration() {
+            fetch('/api/cmd/calibrate', {method: 'POST'})
+                .then(() => setTimeout(updateStatus, 100));
+        }
         
         // Начальное обновление и периодическое обновление
         updateStatus();
@@ -351,11 +381,15 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
 // ═══════════════════════════════════════════════════════════
 // REST API Обработчики
 void handleStatusAPI() {
+    String msg = statusMessage;
+    msg.replace("\"", "\\\"");
+
     String json = "{";
     json += "\"vLeft\":" + String(vLeft, 1) + ",";
     json += "\"vRight\":" + String(vRight, 1) + ",";
     json += "\"mode\":" + String((int)currentMode) + ",";
-    json += "\"motorDir\":" + String((int)getMotorDir());
+    json += "\"motorDir\":" + String((int)getMotorDir()) + ",";
+    json += "\"statusMessage\":\"" + msg + "\"";
     json += "}";
     
     server.sendHeader("Access-Control-Allow-Origin", "*");
@@ -390,6 +424,22 @@ void handleCmdMode() {
     } else {
         currentMode = MANUAL;
     }
+    server.send(200, "text/plain", "OK");
+}
+
+void handleCmdCalibrate() {
+    if (currentMode == CALIBRATION) {
+        statusMessage = "Калибровка уже запущена";
+        server.send(200, "text/plain", "OK");
+        return;
+    }
+
+    modeAfterCalibration = currentMode;
+    currentMode = CALIBRATION;
+    calibrationStartTime = millis();
+    calibrationComboLockout = true;
+    statusMessage = "Режим калибровки активирован через веб";
+
     server.send(200, "text/plain", "OK");
 }
 
@@ -450,6 +500,7 @@ void initWebServer() {
     server.on("/api/cmd/left", HTTP_POST, handleCmdLeft);
     server.on("/api/cmd/right", HTTP_POST, handleCmdRight);
     server.on("/api/cmd/mode", HTTP_POST, handleCmdMode);
+    server.on("/api/cmd/calibrate", HTTP_POST, handleCmdCalibrate);
     server.onNotFound(handleNotFound);
     
     server.begin();

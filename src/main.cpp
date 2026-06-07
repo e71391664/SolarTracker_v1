@@ -55,6 +55,7 @@ float     vRightRaw   = 0;
 unsigned long lastMeasure = 0;
 unsigned long calibrationStartTime = 0;
 bool calibrationComboLockout = false;
+String    statusMessage = "";
 
 // ─── Прототипы ─────────────────────────────────────────────
 
